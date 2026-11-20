@@ -694,9 +694,11 @@ dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
  "id_tree",
+ "illumosfb",
  "indexmap 2.14.2",
  "jiff",
  "keyframe",
+ "libc",
  "libcosmic",
  "libdisplay-info",
  "libsystemd",
@@ -2465,6 +2467,13 @@ checksum = "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
+]
+
+[[package]]
+name = "illumosfb"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

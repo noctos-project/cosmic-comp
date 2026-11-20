@@ -1,0 +1,14 @@
+[package]
+name = "illumosfb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libc = "0.2"
+
+[[bin]]
+name = "fbdemo"
+path = "src/bin/fbdemo.rs"
+
+[profile.release]
+strip = true
