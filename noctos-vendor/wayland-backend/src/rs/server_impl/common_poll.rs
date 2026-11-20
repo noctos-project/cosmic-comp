@@ -48,13 +48,20 @@ impl<D> InnerBackend<D> {
         ))]
         let poll_fd = kqueue().map_err(Into::into).map_err(InitError::Io)?;
 
+        // illumos: an event port, NOT the epoll compatibility interface. The
+        // caller's event loop polls this descriptor, and an illumos epoll
+        // descriptor only wakes other epoll//dev/poll instances: it never
+        // registers a pollhead, so an event port or poll(2) waiting on it is
+        // never woken and clients are accepted but never serviced. Event
+        // ports do register one and call pollwakeup().
         #[cfg(target_os = "illumos")]
         let poll_fd = {
             use std::os::unix::io::FromRawFd;
-            let fd = unsafe { libc::epoll_create1(libc::EPOLL_CLOEXEC) };
+            let fd = unsafe { libc::port_create() };
             if fd < 0 {
                 return Err(InitError::Io(std::io::Error::last_os_error()));
             }
+            unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
             unsafe { OwnedFd::from_raw_fd(fd) }
         };
 
@@ -153,31 +160,65 @@ impl<D> InnerBackend<D> {
 
     #[cfg(target_os = "illumos")]
     pub fn dispatch_all_clients(&self, data: &mut D) -> std::io::Result<usize> {
-        use std::os::unix::io::AsRawFd;
+        use std::os::unix::io::{AsFd, AsRawFd};
 
         let poll_fd = self.poll_fd();
         let mut dispatched = 0;
-        let mut events: [libc::epoll_event; 32] = unsafe { std::mem::zeroed() };
+        let mut events: [libc::port_event; 32] = unsafe { std::mem::zeroed() };
         loop {
-            let nevents = unsafe {
-                libc::epoll_wait(poll_fd.as_raw_fd(), events.as_mut_ptr(), 32, 0)
+            // Ask for at least one event without waiting.
+            let mut nget: libc::c_uint = 1;
+            let mut timeout = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+            let ret = unsafe {
+                libc::port_getn(
+                    poll_fd.as_raw_fd(),
+                    events.as_mut_ptr(),
+                    events.len() as libc::c_uint,
+                    &mut nget,
+                    &mut timeout,
+                )
             };
-            if nevents < 0 {
+            if ret < 0 {
                 let err = std::io::Error::last_os_error();
-                if err.kind() == std::io::ErrorKind::Interrupted {
-                    continue;
+                match err.raw_os_error() {
+                    Some(libc::EINTR) => continue,
+                    // Nothing (more) is ready. port_getn can still have
+                    // returned some events, so `nget` decides below.
+                    Some(libc::ETIME) => {}
+                    _ => return Err(err),
                 }
-                return Err(err);
             }
-            if nevents == 0 {
+            if nget == 0 {
                 break;
             }
 
-            for event in &events[..nevents as usize] {
-                let id = InnerClientId::from_u64(event.u64);
+            for event in &events[..nget as usize] {
+                let id = InnerClientId::from_u64(event.portev_user as usize as u64);
                 // remove the cb while we call it, to gracefully handle reentrancy
-                if let Ok(count) = self.dispatch_events_for(data, id) {
-                    dispatched += count;
+                let rearm = match self.dispatch_events_for(data, id.clone()) {
+                    Ok(count) => {
+                        dispatched += count;
+                        true
+                    }
+                    // Woken without a complete request yet: keep watching.
+                    Err(err) => err.kind() == std::io::ErrorKind::WouldBlock,
+                };
+                // A PORT_SOURCE_FD association is consumed by the event it
+                // delivers. Re-associating reports data that is still
+                // pending, which gives level-triggered behaviour.
+                if rearm {
+                    let state = self.state.lock().unwrap();
+                    if let Ok(client) = state.clients.get_client(id) {
+                        unsafe {
+                            libc::port_associate(
+                                state.poll_fd.as_raw_fd(),
+                                libc::PORT_SOURCE_FD,
+                                client.as_fd().as_raw_fd() as libc::uintptr_t,
+                                libc::POLLIN as libc::c_int,
+                                event.portev_user,
+                            );
+                        }
+                    }
                 }
             }
             let cleanup = self.state.lock().unwrap().cleanup();
@@ -243,16 +284,14 @@ impl<D> InnerBackend<D> {
                             #[cfg(target_os = "illumos")]
                             {
                                 use std::os::unix::io::{AsFd, AsRawFd};
-                                let r = unsafe {
-                                    libc::epoll_ctl(
+                                // Usually a no-op (ENOENT): the association
+                                // was consumed by the event that got us here.
+                                unsafe {
+                                    libc::port_dissociate(
                                         state.poll_fd.as_raw_fd(),
-                                        libc::EPOLL_CTL_DEL,
-                                        client.as_fd().as_raw_fd(),
-                                        std::ptr::null_mut(),
-                                    )
-                                };
-                                if r < 0 {
-                                    return Err(std::io::Error::last_os_error());
+                                        libc::PORT_SOURCE_FD,
+                                        client.as_fd().as_raw_fd() as libc::uintptr_t,
+                                    );
                                 }
                             }
 

@@ -397,13 +397,13 @@ impl<D> ErasedState for State<D> {
         let ret = {
             use std::os::unix::io::{AsFd, AsRawFd};
 
-            let mut evt = libc::epoll_event { events: libc::EPOLLIN as u32, u64: id.as_u64() };
             let r = unsafe {
-                libc::epoll_ctl(
+                libc::port_associate(
                     self.poll_fd.as_raw_fd(),
-                    libc::EPOLL_CTL_ADD,
-                    client.as_fd().as_raw_fd(),
-                    &mut evt,
+                    libc::PORT_SOURCE_FD,
+                    client.as_fd().as_raw_fd() as libc::uintptr_t,
+                    libc::POLLIN as libc::c_int,
+                    id.as_u64() as usize as *mut libc::c_void,
                 )
             };
             if r < 0 {
