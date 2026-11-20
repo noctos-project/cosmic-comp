@@ -151,6 +151,9 @@ impl IllumosfbState {
 
     #[profiling::function]
     fn render_output(&mut self, state: &mut Common) -> Result<()> {
+        let timing = std::env::var_os("COSMIC_ILLUMOSFB_TIMING").is_some();
+        let t_start = std::time::Instant::now();
+        let (mut t_render, mut t_read, mut t_convert) = (t_start, t_start, t_start);
         let mut fb = self
             .renderer
             .bind(&mut self.target)
@@ -170,6 +173,9 @@ impl IllumosfbState {
         ) {
             Ok(RenderOutputResult { damage, states, .. }) => {
                 let presented = damage.is_some();
+                t_render = std::time::Instant::now();
+                t_read = t_render;
+                t_convert = t_render;
                 if presented {
                     // GL_RGBA readback is the one format every GLES
                     // implementation must support.
@@ -181,7 +187,9 @@ impl IllumosfbState {
                         .renderer
                         .map_texture(&mapping)
                         .with_context(|| "Failed to map the rendered frame")?;
+                    t_read = std::time::Instant::now();
                     rgba_to_xrgb(bytes, &mut self.pixels, self.size);
+                    t_convert = std::time::Instant::now();
                 }
                 std::mem::drop(fb);
                 self.age = 1;
@@ -195,6 +203,18 @@ impl IllumosfbState {
                     {
                         warn!(?err, "Failed to dump frame to {}", path.display());
                     }
+                }
+                if timing && presented {
+                    let ms = |a: std::time::Instant, b: std::time::Instant| {
+                        b.duration_since(a).as_secs_f64() * 1000.0
+                    };
+                    eprintln!(
+                        "illumosfb frame: render {:.1} ms, readback {:.1} ms, convert {:.1} ms, present {:.1} ms",
+                        ms(t_start, t_render),
+                        ms(t_render, t_read),
+                        ms(t_read, t_convert),
+                        ms(t_convert, std::time::Instant::now()),
+                    );
                 }
 
                 state.send_frames(&self.output, None);
