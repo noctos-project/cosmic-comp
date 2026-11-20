@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+#[cfg(feature = "backend-illumosfb")]
+use crate::backend::illumosfb::IllumosfbState;
+#[cfg(feature = "backend-kms")]
+use crate::backend::kms::KmsGuard;
+use crate::backend::kms::KmsState;
+#[cfg(feature = "backend-winit")]
+use crate::backend::winit::WinitState;
+#[cfg(feature = "backend-x11")]
+use crate::backend::x11::X11State;
 use crate::{
-    backend::{
-        kms::{KmsGuard, KmsState},
-        render::{GlMultiError, RendererRef},
-        winit::WinitState,
-        x11::X11State,
-    },
+    backend::render::{GlMultiError, RendererRef},
     config::{CompOutputConfig, Config, ScreenFilter},
     dbus::DBusState,
     input::{PointerFocusState, gestures::GestureState},
@@ -39,12 +43,17 @@ use i18n_embed::{
     fluent::{FluentLanguageLoader, fluent_language_loader},
 };
 use rust_embed::RustEmbed;
+#[cfg(any(
+    feature = "backend-winit",
+    feature = "backend-x11",
+    feature = "backend-illumosfb"
+))]
+use smithay::backend::renderer::ImportDma;
 use smithay::{
     backend::{
         allocator::{Fourcc, dmabuf::Dmabuf},
         drm::DrmNode,
         renderer::{
-            ImportDma,
             element::{
                 RenderElementState, RenderElementStates, default_primary_scanout_output_compare,
                 utils::select_dmabuf_feedback,
@@ -178,6 +187,7 @@ impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
     fn disconnected(&self, client_id: ClientId, _reason: DisconnectReason) {
         self.evlh.insert_idle(move |state| {
+            #[cfg(feature = "backend-kms")]
             if let BackendData::Kms(kms_state) = &mut state.backend {
                 for device in kms_state.drm_devices.values_mut() {
                     if device.inner.active_clients.remove(&client_id)
@@ -334,18 +344,31 @@ pub struct Common {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum BackendData {
+    #[cfg(feature = "backend-x11")]
     X11(X11State),
+    #[cfg(feature = "backend-winit")]
     Winit(WinitState),
+    #[cfg(feature = "backend-kms")]
     Kms(KmsState),
+    #[cfg(feature = "backend-illumosfb")]
+    Illumosfb(IllumosfbState),
     // TODO
     // Wayland(WaylandState),
     Unset,
 }
 
 pub enum LockedBackend<'a> {
+    #[cfg(feature = "backend-x11")]
     X11(&'a mut X11State),
+    #[cfg(feature = "backend-winit")]
     Winit(&'a mut WinitState),
+    #[cfg(feature = "backend-kms")]
     Kms(KmsGuard<'a>),
+    #[cfg(feature = "backend-illumosfb")]
+    Illumosfb(&'a mut IllumosfbState),
+    /// Keeps the lifetime used when no session backend is compiled in.
+    #[doc(hidden)]
+    _Unset(std::marker::PhantomData<&'a mut ()>),
 }
 
 #[derive(Debug, Clone)]
@@ -368,6 +391,19 @@ impl Default for SurfaceFrameThrottlingState {
 }
 
 impl BackendData {
+    /// Whether this backend owns the session's display hardware, as opposed
+    /// to running nested inside another compositor.
+    pub fn is_session(&self) -> bool {
+        match self {
+            #[cfg(feature = "backend-kms")]
+            BackendData::Kms(_) => true,
+            #[cfg(feature = "backend-illumosfb")]
+            BackendData::Illumosfb(_) => true,
+            _ => false,
+        }
+    }
+
+    #[cfg(feature = "backend-kms")]
     pub fn kms(&mut self) -> &mut KmsState {
         match self {
             BackendData::Kms(kms_state) => kms_state,
@@ -375,6 +411,7 @@ impl BackendData {
         }
     }
 
+    #[cfg(feature = "backend-x11")]
     pub fn x11(&mut self) -> &mut X11State {
         match self {
             BackendData::X11(x11_state) => x11_state,
@@ -382,6 +419,15 @@ impl BackendData {
         }
     }
 
+    #[cfg(feature = "backend-illumosfb")]
+    pub fn illumosfb(&mut self) -> &mut IllumosfbState {
+        match self {
+            BackendData::Illumosfb(state) => state,
+            _ => unreachable!("Called illumosfb in non illumosfb backend"),
+        }
+    }
+
+    #[cfg(feature = "backend-winit")]
     pub fn winit(&mut self) -> &mut WinitState {
         match self {
             BackendData::Winit(winit_state) => winit_state,
@@ -391,11 +437,16 @@ impl BackendData {
 
     pub fn schedule_render(&mut self, output: &Output) {
         match self {
+            #[cfg(feature = "backend-winit")]
             BackendData::Winit(_) => {} // We cannot do this on the winit backend.
             // Winit has a very strict render-loop and skipping frames breaks atleast the wayland winit-backend.
             // Swapping with damage (which should be empty on these frames) is likely good enough anyway.
+            #[cfg(feature = "backend-x11")]
             BackendData::X11(state) => state.schedule_render(output),
+            #[cfg(feature = "backend-kms")]
             BackendData::Kms(state) => state.schedule_render(output),
+            #[cfg(feature = "backend-illumosfb")]
+            BackendData::Illumosfb(state) => state.schedule_render(output),
             _ => unreachable!("No backend was initialized"),
         }
     }
@@ -407,13 +458,20 @@ impl BackendData {
         dmabuf: Dmabuf,
     ) -> Result<Option<DrmNode>, anyhow::Error> {
         match self {
+            #[cfg(feature = "backend-kms")]
             BackendData::Kms(state) => {
                 return state.dmabuf_imported(client, global, dmabuf).map(Some);
             }
+            #[cfg(feature = "backend-winit")]
             BackendData::Winit(state) => {
                 state.backend.renderer().import_dmabuf(&dmabuf, None)?;
             }
+            #[cfg(feature = "backend-x11")]
             BackendData::X11(state) => {
+                state.renderer.import_dmabuf(&dmabuf, None)?;
+            }
+            #[cfg(feature = "backend-illumosfb")]
+            BackendData::Illumosfb(state) => {
                 state.renderer.import_dmabuf(&dmabuf, None)?;
             }
             _ => unreachable!("No backend set when importing dmabuf"),
@@ -431,6 +489,7 @@ impl BackendData {
         kms_node_cb: F,
     ) -> Result<RendererRef<'_>, GlMultiError> {
         match self {
+            #[cfg(feature = "backend-kms")]
             BackendData::Kms(kms) => {
                 if let Some(nodes) = kms_node_cb(kms) {
                     let nodes = nodes.into();
@@ -447,26 +506,40 @@ impl BackendData {
                     ))
                 }
             }
+            #[cfg(feature = "backend-winit")]
             BackendData::Winit(winit) => Ok(RendererRef::Glow(winit.backend.renderer())),
+            #[cfg(feature = "backend-x11")]
             BackendData::X11(x11) => Ok(RendererRef::Glow(&mut x11.renderer)),
+            #[cfg(feature = "backend-illumosfb")]
+            BackendData::Illumosfb(fb) => Ok(RendererRef::Glow(&mut fb.renderer)),
             _ => unreachable!("No backend set when getting offscreen renderer"),
         }
     }
 
     pub fn update_screen_filter(&mut self, screen_filter: &ScreenFilter) -> anyhow::Result<()> {
         match self {
+            #[cfg(feature = "backend-kms")]
             BackendData::Kms(state) => state.update_screen_filter(screen_filter),
+            #[cfg(feature = "backend-winit")]
             BackendData::Winit(state) => state.update_screen_filter(screen_filter),
+            #[cfg(feature = "backend-x11")]
             BackendData::X11(state) => state.update_screen_filter(screen_filter),
+            #[cfg(feature = "backend-illumosfb")]
+            BackendData::Illumosfb(state) => state.update_screen_filter(screen_filter),
             _ => unreachable!("No backend set when setting screen filters"),
         }
     }
 
     pub fn lock(&mut self) -> LockedBackend<'_> {
         match self {
+            #[cfg(feature = "backend-kms")]
             BackendData::Kms(state) => LockedBackend::Kms(state.lock_devices()),
+            #[cfg(feature = "backend-x11")]
             BackendData::X11(state) => LockedBackend::X11(state),
+            #[cfg(feature = "backend-winit")]
             BackendData::Winit(state) => LockedBackend::Winit(state),
+            #[cfg(feature = "backend-illumosfb")]
+            BackendData::Illumosfb(state) => LockedBackend::Illumosfb(state),
             _ => unreachable!("Tried to lock unset backend"),
         }
     }
@@ -475,9 +548,15 @@ impl BackendData {
 impl LockedBackend<'_> {
     pub fn all_outputs(&self) -> Vec<Output> {
         match self {
+            #[cfg(feature = "backend-kms")]
             LockedBackend::Kms(state) => state.all_outputs(),
+            #[cfg(feature = "backend-x11")]
             LockedBackend::X11(state) => state.all_outputs(),
+            #[cfg(feature = "backend-winit")]
             LockedBackend::Winit(state) => state.all_outputs(),
+            #[cfg(feature = "backend-illumosfb")]
+            LockedBackend::Illumosfb(state) => state.all_outputs(),
+            LockedBackend::_Unset(_) => Vec::new(),
         }
     }
 
@@ -555,6 +634,7 @@ impl LockedBackend<'_> {
         }
 
         match self {
+            #[cfg(feature = "backend-kms")]
             LockedBackend::Kms(state) => state.apply_config_for_outputs(
                 test_only,
                 loop_handle,
@@ -563,8 +643,13 @@ impl LockedBackend<'_> {
                 startup_done,
                 clock,
             ),
+            #[cfg(feature = "backend-winit")]
             LockedBackend::Winit(state) => state.apply_config_for_outputs(test_only),
+            #[cfg(feature = "backend-x11")]
             LockedBackend::X11(state) => state.apply_config_for_outputs(test_only),
+            #[cfg(feature = "backend-illumosfb")]
+            LockedBackend::Illumosfb(state) => state.apply_config_for_outputs(test_only),
+            LockedBackend::_Unset(_) => Ok(()),
         }?;
 
         let mut shell_ref = shell.write();
@@ -610,11 +695,17 @@ impl LockedBackend<'_> {
 
         for output in active_outputs {
             match self {
+                #[cfg(feature = "backend-winit")]
                 LockedBackend::Winit(_) => {} // We cannot do this on the winit backend.
                 // Winit has a very strict render-loop and skipping frames breaks atleast the wayland winit-backend.
                 // Swapping with damage (which should be empty on these frames) is likely good enough anyway.
+                #[cfg(feature = "backend-x11")]
                 LockedBackend::X11(state) => state.schedule_render(&output),
+                #[cfg(feature = "backend-kms")]
                 LockedBackend::Kms(state) => state.schedule_render(&output),
+                #[cfg(feature = "backend-illumosfb")]
+                LockedBackend::Illumosfb(state) => state.schedule_render(&output),
+                LockedBackend::_Unset(_) => {}
             }
         }
 
@@ -861,6 +952,7 @@ impl State {
         ClientState {
             compositor_client_state: CompositorClientState::default(),
             advertised_drm_node: match &self.backend {
+                #[cfg(feature = "backend-kms")]
                 BackendData::Kms(kms_state) => *kms_state.primary_node.read().unwrap(),
                 _ => None,
             },
@@ -878,6 +970,7 @@ impl State {
 
             let outputs = self.backend.lock().all_outputs();
             let is_active = match &self.backend {
+                #[cfg(feature = "backend-kms")]
                 BackendData::Kms(kms) => kms.session.is_active(),
                 _ => true,
             };

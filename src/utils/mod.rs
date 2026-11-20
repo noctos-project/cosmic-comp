@@ -11,3 +11,5 @@ pub mod quirks;
 pub mod rlimit;
 pub mod screenshot;
 pub mod tween;
+#[cfg(not(feature = "backend-kms"))]
+pub mod libinput_stub;

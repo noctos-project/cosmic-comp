@@ -15,6 +15,12 @@ use cosmic_settings_config::window_rules::ApplicationException;
 use cosmic_settings_config::{Shortcuts, shortcuts, window_rules};
 use serde::{Deserialize, Serialize};
 use smithay::wayland::xdg_activation::XdgActivationState;
+#[cfg(not(feature = "backend-kms"))]
+pub use crate::utils::libinput_stub::InputDevice;
+#[cfg(feature = "backend-kms")]
+pub use smithay::reexports::input::{
+    AccelProfile, ClickMethod, Device as InputDevice, ScrollMethod, SendEventsMode, TapButtonMap,
+};
 use smithay::{
     backend::input::InputTime,
     utils::{Clock, Monotonic},
@@ -25,10 +31,6 @@ pub use smithay::{
     output::{Mode, Output},
     reexports::{
         calloop::LoopHandle,
-        input::{
-            AccelProfile, ClickMethod, Device as InputDevice, ScrollMethod, SendEventsMode,
-            TapButtonMap,
-        },
     },
     utils::{Logical, Physical, Point, SERIAL_COUNTER, Size, Transform},
 };
@@ -634,6 +636,7 @@ impl Config {
         self.cosmic_conf.xkb_config.clone()
     }
 
+    #[cfg(feature = "backend-kms")]
     pub fn read_device(&self, device: &mut InputDevice) {
         let (device_config, default_config) = self.get_device_config(device);
         input_config::update_device(device, device_config.as_ref(), default_config);
@@ -777,7 +780,9 @@ fn get_config<T: Default + serde::de::DeserializeOwned>(
     })
 }
 
+#[cfg_attr(not(feature = "backend-kms"), allow(unused_variables))]
 fn update_input(state: &mut State) {
+    #[cfg(feature = "backend-kms")]
     if let BackendData::Kms(kms_state) = &mut state.backend {
         for device in kms_state.input_devices.values_mut() {
             state.common.config.read_device(device);

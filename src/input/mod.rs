@@ -44,6 +44,10 @@ use cosmic_settings_config::shortcuts;
 use cosmic_settings_config::shortcuts::action::{Direction, ResizeDirection};
 #[cfg(feature = "logind")]
 use smithay::backend::input::{Switch, SwitchState, SwitchToggleEvent};
+#[cfg(not(feature = "backend-kms"))]
+use crate::utils::libinput_stub::InputDevice;
+#[cfg(feature = "backend-kms")]
+use smithay::reexports::input::Device as InputDevice;
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisRelativeDirection, AxisSource, Device, DeviceCapability,
@@ -69,7 +73,6 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        input::Device as InputDevice,
         wayland_server::{Resource as _, protocol::wl_surface::WlSurface},
     },
     utils::{Clock, Logical, Monotonic, Point, Rectangle, SERIAL_COUNTER, Serial, Size},
@@ -2622,6 +2625,7 @@ impl State {
             && (Keysym::XF86_Switch_VT_1.raw()..=Keysym::XF86_Switch_VT_12.raw())
                 .contains(&handle.modified_sym().raw())
         {
+            #[cfg(feature = "backend-kms")]
             if let Err(err) = self.backend.kms().switch_vt(
                 (handle.modified_sym().raw() - Keysym::XF86_Switch_VT_1.raw() + 1) as i32,
             ) {

@@ -2,7 +2,40 @@
 
 #![allow(non_snake_case)]
 
-pub use input::{AccelProfile, ClickMethod, ScrollMethod, TapButtonMap};
+pub use libinput_types::{AccelProfile, ClickMethod, ScrollMethod, TapButtonMap};
+
+#[cfg(feature = "libinput")]
+mod libinput_types {
+    pub use ::input::{AccelProfile, ClickMethod, ScrollMethod, TapButtonMap};
+}
+
+/// Stand-ins for the libinput enums on platforms without libinput. Same
+/// variant names, so serialized configuration is identical.
+#[cfg(not(feature = "libinput"))]
+mod libinput_types {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum AccelProfile {
+        Flat,
+        Adaptive,
+    }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum ClickMethod {
+        ButtonAreas,
+        Clickfinger,
+    }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum ScrollMethod {
+        NoScroll,
+        TwoFinger,
+        Edge,
+        OnButtonDown,
+    }
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum TapButtonMap {
+        LeftRightMiddle,
+        LeftMiddleRight,
+    }
+}
 use serde::{Deserialize, Serialize};
 
 // Note: For the following values, None is used to represent the system default
@@ -73,8 +106,9 @@ pub struct TapConfig {
     pub drag_lock: bool,
 }
 
+#[cfg_attr(not(feature = "libinput"), allow(unreachable_patterns))]
 mod ClickMethodDef {
-    use input::ClickMethod as ClickMethodOrig;
+    use super::libinput_types::ClickMethod as ClickMethodOrig;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -107,8 +141,9 @@ mod ClickMethodDef {
     }
 }
 
+#[cfg_attr(not(feature = "libinput"), allow(unreachable_patterns))]
 mod AccelProfileDef {
-    use input::AccelProfile as AccelProfileOrig;
+    use super::libinput_types::AccelProfile as AccelProfileOrig;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -141,8 +176,9 @@ mod AccelProfileDef {
     }
 }
 
+#[cfg_attr(not(feature = "libinput"), allow(unreachable_patterns))]
 mod ScrollMethodDef {
-    use input::ScrollMethod as ScrollMethodOrig;
+    use super::libinput_types::ScrollMethod as ScrollMethodOrig;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -181,8 +217,9 @@ mod ScrollMethodDef {
     }
 }
 
+#[cfg_attr(not(feature = "libinput"), allow(unreachable_patterns))]
 mod TapButtonMapDef {
-    use input::TapButtonMap as TapButtonMapOrig;
+    use super::libinput_types::TapButtonMap as TapButtonMapOrig;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     #[derive(Debug, Serialize, Deserialize)]

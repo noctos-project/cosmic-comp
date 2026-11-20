@@ -106,6 +106,7 @@ pub fn screenshot_window(state: &mut State, surface: &CosmicSurface) {
             .with_context(|| "Failed to get renderer for screenshot")
             .and_then(|renderer| match renderer {
                 RendererRef::Glow(renderer) => render_window(renderer, surface),
+                #[cfg(feature = "backend-kms")]
                 RendererRef::GlMulti(mut renderer) => render_window(&mut renderer, surface),
             });
         if let Err(err) = res {

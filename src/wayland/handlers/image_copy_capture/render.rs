@@ -493,6 +493,7 @@ pub fn render_workspace_to_buffer(
                 }
             }
         }
+        #[cfg(feature = "backend-kms")]
         RendererRef::GlMulti(mut renderer) => {
             match render_session(
                 &mut renderer,
@@ -763,6 +764,7 @@ pub fn render_window_to_buffer(
                 None
             }
         },
+        #[cfg(feature = "backend-kms")]
         RendererRef::GlMulti(mut renderer) => match render_session(
             &mut renderer,
             session.user_data().get::<SessionData>().unwrap(),
@@ -929,6 +931,7 @@ pub fn render_cursor_to_buffer(
                 }
             }
         }
+        #[cfg(feature = "backend-kms")]
         RendererRef::GlMulti(mut renderer) => {
             match render_session(
                 &mut renderer,

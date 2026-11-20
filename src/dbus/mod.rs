@@ -127,6 +127,8 @@ async fn power_hot_plug_task(
 ) -> Result<()> {
     match power::init(&conn).await {
         Ok(power_daemon) => {
+            // Display hot-plug is only tracked for kms devices.
+            #[cfg(feature = "backend-kms")]
             if let Ok(stream) = power_daemon.receive_hot_plug_detect().await {
                 let source = StreamSource::new(stream).unwrap();
                 evlh.insert_source(source, |_, _, state| {

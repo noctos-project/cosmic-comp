@@ -1,10 +1,13 @@
+#[cfg(feature = "backend-kms")]
 use smithay::reexports::input::{
     Device as InputDevice, DeviceConfigError, DragLockState, ScrollMethod, SendEventsMode,
 };
+#[cfg(feature = "backend-kms")]
 use tracing::warn;
 
 use cosmic_comp_config::input::*;
 
+#[cfg(feature = "backend-kms")]
 #[allow(dead_code)]
 pub fn for_device(device: &InputDevice) -> InputConfig {
     InputConfig {
@@ -97,6 +100,7 @@ pub fn get_config<'a, T: 'a, F: Fn(&'a InputConfig) -> Option<T>>(
     }
 }
 
+#[cfg(feature = "backend-kms")]
 fn config_set_error<T: std::fmt::Debug>(
     device: &InputDevice,
     setting: &str,
@@ -115,6 +119,7 @@ fn config_set_error<T: std::fmt::Debug>(
     }
 }
 
+#[cfg(feature = "backend-kms")]
 pub fn update_device(
     device: &mut InputDevice,
     device_config: Option<&InputConfig>,

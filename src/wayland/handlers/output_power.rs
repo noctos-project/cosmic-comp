@@ -2,15 +2,21 @@
 
 use smithay::output::Output;
 
+#[cfg(feature = "backend-kms")]
+use crate::{backend::kms::Surface, state::BackendData};
 use crate::{
-    backend::kms::Surface,
-    state::{BackendData, State},
+    state::State,
     utils::prelude::OutputExt,
     wayland::protocols::output_power::{
         OutputPowerHandler, OutputPowerState, delegate_output_power,
     },
 };
 
+/// Without kms there is no DPMS control: outputs are always on.
+#[cfg(not(feature = "backend-kms"))]
+pub fn set_all_surfaces_dpms_on(_state: &mut State) {}
+
+#[cfg(feature = "backend-kms")]
 pub fn set_all_surfaces_dpms_on(state: &mut State) {
     let mut changed = false;
     for surface in kms_surfaces(state) {
@@ -30,6 +36,7 @@ pub fn set_all_surfaces_dpms_on(state: &mut State) {
     }
 }
 
+#[cfg(feature = "backend-kms")]
 fn kms_surfaces(state: &mut State) -> impl Iterator<Item = &mut Surface> {
     if let BackendData::Kms(kms_state) = &mut state.backend {
         Some(
@@ -46,6 +53,7 @@ fn kms_surfaces(state: &mut State) -> impl Iterator<Item = &mut Surface> {
 }
 
 // Get KMS `Surface` for output, and for all outputs mirroring it
+#[cfg(feature = "backend-kms")]
 fn kms_surfaces_for_output<'a>(
     state: &'a mut State,
     output: &'a Output,
@@ -56,6 +64,7 @@ fn kms_surfaces_for_output<'a>(
 }
 
 // Get KMS `Surface` for output
+#[cfg(feature = "backend-kms")]
 fn primary_kms_surface_for_output<'a>(
     state: &'a mut State,
     output: &Output,
@@ -68,16 +77,26 @@ impl OutputPowerHandler for State {
         &mut self.common.output_power_state
     }
 
+    #[cfg(feature = "backend-kms")]
     fn get_dpms(&mut self, output: &Output) -> Option<bool> {
         let surface = primary_kms_surface_for_output(self, output)?;
         Some(surface.get_dpms())
     }
 
+    #[cfg(feature = "backend-kms")]
     fn set_dpms(&mut self, output: &Output, on: bool) {
         for surface in kms_surfaces_for_output(self, output) {
             surface.set_dpms(on);
         }
     }
+
+    #[cfg(not(feature = "backend-kms"))]
+    fn get_dpms(&mut self, _output: &Output) -> Option<bool> {
+        None
+    }
+
+    #[cfg(not(feature = "backend-kms"))]
+    fn set_dpms(&mut self, _output: &Output, _on: bool) {}
 }
 
 delegate_output_power!(State);

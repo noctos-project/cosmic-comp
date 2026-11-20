@@ -11,7 +11,7 @@ use smithay::wayland::text_input::TextInputSeat;
 
 use crate::config::xkb_config_to_wl;
 use crate::input::InputBackendId;
-use crate::state::{BackendData, State};
+use crate::state::State;
 use crate::utils::{geometry::RectGlobalExt, prelude::OutputExt};
 
 // Requested device types for an EI connection, mirroring the XDG RemoteDesktop portal `DeviceType` bitmask
@@ -142,9 +142,9 @@ pub fn setup_ei(
                                 let backend_id =
                                     InputBackendId::Ei(connection.eis_connection().clone());
                                 data.process_input_event(other, backend_id);
-                                if matches!(data.backend, BackendData::Kms(_)) {
+                                if data.backend.is_session() {
                                     for output in data.common.shell.read().outputs() {
-                                        data.backend.kms().schedule_render(output);
+                                        data.backend.schedule_render(output);
                                     }
                                 }
                             }

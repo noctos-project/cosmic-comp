@@ -10,6 +10,7 @@ pub mod data_device;
 pub mod decoration;
 pub mod dmabuf;
 pub mod drm;
+#[cfg(feature = "backend-kms")]
 pub mod drm_lease;
 pub mod drm_syncobj;
 pub mod foreign_toplevel_list;

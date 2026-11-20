@@ -4,6 +4,13 @@
     clippy::len_without_is_empty,
     clippy::collapsible_match
 )]
+// Builds without the kms backend compile out its call sites, leaving imports
+// and bindings that only those sites used. One crate-level allow keeps the
+// gating patch small instead of cfg-gating each import.
+#![cfg_attr(
+    not(feature = "backend-kms"),
+    allow(unused_imports, unused_variables, unused_mut, unreachable_code, dead_code)
+)]
 // SPDX-License-Identifier: GPL-3.0-only
 
 use calloop::timer::{TimeoutAction, Timer};
@@ -67,7 +74,7 @@ impl State {
         // into systemd and the session?
         self.ready.call_once(|| {
             // potentially tell systemd we are setup now
-            if let state::BackendData::Kms(_) = &self.backend {
+            if self.backend.is_session() {
                 #[cfg(feature = "systemd")]
                 systemd::ready(&self.common);
                 if let Err(err) = dbus::ready(&self.common) {
@@ -261,6 +268,7 @@ pub fn run(hooks: crate::hooks::Hooks) -> Result<(), Box<dyn Error>> {
     // Mesa's atexit handlers run and corrupt the heap (issue #2375). Safe here
     // because the event loop has stopped; an unconditional join in Surface::Drop
     // would instead deadlock against apply_config_for_outputs.
+    #[cfg(feature = "backend-kms")]
     if let BackendData::Kms(kms) = &mut state.backend {
         // Release master first so the surface drop path skips its blocking commit.
         for device in kms.drm_devices.values_mut() {

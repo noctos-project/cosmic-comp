@@ -8,6 +8,10 @@ use crate::{
     input::{InputBackendId, ModifiersShortcutQueue, SupressedButtons, SupressedKeys},
     state::State,
 };
+#[cfg(not(feature = "backend-kms"))]
+use crate::utils::libinput_stub::InputDevice;
+#[cfg(feature = "backend-kms")]
+use smithay::reexports::input::Device as InputDevice;
 use smithay::{
     backend::input::{Device, DeviceCapability},
     desktop::utils::bbox_from_surface_tree,
@@ -18,7 +22,6 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        input::Device as InputDevice,
         wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
     },
     utils::{Buffer, IsAlive, Logical, Monotonic, Point, Rectangle, Serial, Time, Transform},

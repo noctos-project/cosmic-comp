@@ -42,38 +42,47 @@ impl DmabufHandler for State {
         surface: &WlSurface,
         _global: &DmabufGlobal,
     ) -> Option<DmabufFeedback> {
-        let BackendData::Kms(kms) = &self.backend else {
-            return None;
-        };
-        let shell = self.common.shell.read();
+        // Scanout feedback is specific to kms planes.
+        #[cfg(not(feature = "backend-kms"))]
+        {
+            let _ = surface;
+            None
+        }
+        #[cfg(feature = "backend-kms")]
+        {
+            let BackendData::Kms(kms) = &self.backend else {
+                return None;
+            };
+            let shell = self.common.shell.read();
 
-        let (handle, output) = shell.workspace_for_surface(surface)?;
-        let is_fullscreen = shell
-            .workspaces
-            .space_for_handle(&handle)?
-            .fullscreen_surfaces
-            .iter()
-            .any(|f| {
-                f.ended_at.is_none() && f.surface.has_surface(surface, WindowSurfaceType::all())
-            });
+            let (handle, output) = shell.workspace_for_surface(surface)?;
+            let is_fullscreen = shell
+                .workspaces
+                .space_for_handle(&handle)?
+                .fullscreen_surfaces
+                .iter()
+                .any(|f| {
+                    f.ended_at.is_none() && f.surface.has_surface(surface, WindowSurfaceType::all())
+                });
 
-        let node = kms.primary_node.read().unwrap().unwrap();
-        let kms_surface = kms
-            .drm_devices
-            .values()
-            .find_map(|device| device.inner.surfaces.values().find(|s| s.output == output))?;
-        let feedback = kms_surface.feedback.get(&node)?.clone();
+            let node = kms.primary_node.read().unwrap().unwrap();
+            let kms_surface = kms
+                .drm_devices
+                .values()
+                .find_map(|device| device.inner.surfaces.values().find(|s| s.output == output))?;
+            let feedback = kms_surface.feedback.get(&node)?.clone();
 
-        Some(with_states(surface, |data| {
-            if is_fullscreen {
-                feedback.primary_scanout_feedback
-            } else if frame_time_filter_fn(data) == Kind::ScanoutCandidate {
-                feedback
-                    .overlay_scanout_feedback
-                    .unwrap_or(feedback.render_feedback)
-            } else {
-                feedback.render_feedback
-            }
-        }))
+            Some(with_states(surface, |data| {
+                if is_fullscreen {
+                    feedback.primary_scanout_feedback
+                } else if frame_time_filter_fn(data) == Kind::ScanoutCandidate {
+                    feedback
+                        .overlay_scanout_feedback
+                        .unwrap_or(feedback.render_feedback)
+                } else {
+                    feedback.render_feedback
+                }
+            }))
+        }
     }
 }

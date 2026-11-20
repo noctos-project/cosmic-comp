@@ -13,8 +13,7 @@ members = ["cosmic-comp-config", "cosmic-comp-ipc"]
 anyhow = { version = "1.0.102", features = ["backtrace"] }
 bitflags = "2.11.0"
 calloop = { version = "0.14.4", features = ["executor", "stream"] }
-cosmic-comp-config = { path = "cosmic-comp-config", features = [
-    "libdisplay-info",
+cosmic-comp-config = { path = "cosmic-comp-config", default-features = false, features = [
     "output",
 ] }
 cosmic-comp-ipc = { path = "cosmic-comp-ipc" }
@@ -30,7 +29,7 @@ cosmic-settings-daemon-config = { git = "https://github.com/pop-os/cosmic-settin
     "greeter",
 ] }
 cosmic-text = { version = "0.19", features = ["shape-run-cache"] }
-libdisplay-info = "0.3.0"
+libdisplay-info = { version = "0.3.0", optional = true }
 egui = { version = "0.31.1", optional = true }
 egui_plot = { version = "0.31.0", optional = true }
 i18n-embed = { version = "0.16", features = [
@@ -97,18 +96,10 @@ version = "0.7.0"
 default-features = false
 features = [
     "backend_drm",
-    "backend_gbm",
     "backend_egl",
     "backend_libei",
-    "backend_libinput",
-    "backend_session_libseat",
-    "backend_udev",
-    "backend_winit",
-    "backend_vulkan",
-    "backend_x11",
     "desktop",
     "renderer_glow",
-    "renderer_multi",
     "renderer_pixman",
     "wayland_frontend",
     "xwayland",
@@ -121,7 +112,23 @@ optional = true
 
 [features]
 debug = ["egui", "egui_plot", "smithay-egui", "anyhow/backtrace"]
-default = ["systemd"]
+default = ["systemd", "backend-kms", "backend-x11", "backend-winit"]
+# Linux session backends. Off on platforms without udev/libinput/libseat/gbm
+# (NoctOS/illumos builds use --no-default-features --features backend-illumosfb).
+backend-kms = [
+    "smithay/backend_gbm",
+    "smithay/backend_libinput",
+    "smithay/backend_session_libseat",
+    "smithay/backend_udev",
+    "smithay/backend_vulkan",
+    "smithay/renderer_multi",
+    "dep:libdisplay-info",
+    "cosmic-comp-config/libdisplay-info",
+    "cosmic-comp-config/libinput",
+]
+backend-x11 = ["smithay/backend_x11", "smithay/backend_vulkan"]
+backend-winit = ["smithay/backend_winit"]
+backend-illumosfb = []
 logind = ["cosmic-login1-zbus"]
 systemd = ["libsystemd", "logind", "tracing-journald"]
 profile-with-tracy = ["profiling/profile-with-tracy", "tracy-client/default"]

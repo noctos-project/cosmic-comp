@@ -1,8 +1,7 @@
+#[cfg(feature = "backend-kms")]
+use crate::backend::{kms::render::gles::GbmGlowBackend, render::GlMultiError};
 use crate::{
-    backend::{
-        kms::render::gles::GbmGlowBackend,
-        render::{GlMultiError, wayland::SurfaceRenderElement},
-    },
+    backend::render::wayland::SurfaceRenderElement,
     shell::{CosmicMappedRenderElement, WorkspaceRenderElement},
     utils::iced::IcedRenderElement,
 };
@@ -21,7 +20,6 @@ use smithay::{
             },
             gles::{GlesError, GlesRenderbuffer, GlesTexture, element::TextureShaderElement},
             glow::{GlowFrame, GlowRenderer},
-            multigpu::MultiTexture,
             utils::{CommitCounter, DamageSet, OpaqueRegions},
         },
     },
@@ -30,7 +28,11 @@ use smithay::{
     },
 };
 
-use super::{GlMultiRenderer, cursor::CursorRenderElement};
+#[cfg(feature = "backend-kms")]
+use super::GlMultiRenderer;
+use super::cursor::CursorRenderElement;
+#[cfg(feature = "backend-kms")]
+use smithay::backend::renderer::multigpu::MultiTexture;
 
 pub enum CosmicElement<R>
 where
@@ -442,6 +444,7 @@ impl AsGlowRenderer for GlowRenderer {
     }
 }
 
+#[cfg(feature = "backend-kms")]
 impl AsGlowRenderer for GlMultiRenderer<'_> {
     fn glow_renderer(&self) -> &GlowRenderer {
         self.as_ref()

@@ -11,9 +11,10 @@ use std::{
 
 #[cfg(feature = "debug")]
 use crate::debug::fps_ui;
+#[cfg(feature = "backend-kms")]
+use crate::backend::kms::render::gles::GbmGlowBackend;
 use crate::{
     backend::{
-        kms::render::gles::GbmGlowBackend,
         render::{
             element::DamageElement,
             shadow::{SHADOW_SHADER, ShadowShader},
@@ -50,6 +51,8 @@ use crate::{
 };
 
 use cosmic::Theme;
+#[cfg(feature = "backend-kms")]
+use smithay::backend::renderer::multigpu::{Error as MultiError, MultiFrame, MultiRenderer};
 use smithay::{
     backend::{
         allocator::Fourcc,
@@ -71,7 +74,6 @@ use smithay::{
                 element::{PixelShaderElement, TextureShaderElement},
             },
             glow::GlowRenderer,
-            multigpu::{Error as MultiError, MultiFrame, MultiRenderer},
             sync::SyncPoint,
         },
     },
@@ -94,16 +96,27 @@ pub mod shadow;
 pub mod wayland;
 use self::element::{AsGlowRenderer, CosmicElement};
 
-use super::kms::Timings;
+#[cfg(feature = "backend-kms")]
+pub use super::kms::Timings;
+/// Frame timing statistics only exist for the kms backend.
+#[cfg(not(feature = "backend-kms"))]
+pub enum Timings {}
 
+#[cfg(feature = "backend-kms")]
 pub type GlMultiRenderer<'a> =
     MultiRenderer<'a, 'a, GbmGlowBackend<DrmDeviceFd>, GbmGlowBackend<DrmDeviceFd>>;
+#[cfg(feature = "backend-kms")]
 pub type GlMultiFrame<'a, 'frame, 'buffer> =
     MultiFrame<'a, 'a, 'frame, 'buffer, GbmGlowBackend<DrmDeviceFd>, GbmGlowBackend<DrmDeviceFd>>;
+#[cfg(feature = "backend-kms")]
 pub type GlMultiError = MultiError<GbmGlowBackend<DrmDeviceFd>, GbmGlowBackend<DrmDeviceFd>>;
+/// Without the multi-GPU kms renderer every renderer is a plain GL one.
+#[cfg(not(feature = "backend-kms"))]
+pub type GlMultiError = GlesError;
 
 pub enum RendererRef<'a> {
     Glow(&'a mut GlowRenderer),
+    #[cfg(feature = "backend-kms")]
     GlMulti(GlMultiRenderer<'a>),
 }
 
@@ -111,6 +124,7 @@ impl AsRef<GlowRenderer> for RendererRef<'_> {
     fn as_ref(&self) -> &GlowRenderer {
         match self {
             Self::Glow(renderer) => renderer,
+            #[cfg(feature = "backend-kms")]
             Self::GlMulti(renderer) => renderer.as_ref(),
         }
     }
@@ -120,6 +134,7 @@ impl AsMut<GlowRenderer> for RendererRef<'_> {
     fn as_mut(&mut self) -> &mut GlowRenderer {
         match self {
             Self::Glow(renderer) => renderer,
+            #[cfg(feature = "backend-kms")]
             Self::GlMulti(renderer) => renderer.as_mut(),
         }
     }
