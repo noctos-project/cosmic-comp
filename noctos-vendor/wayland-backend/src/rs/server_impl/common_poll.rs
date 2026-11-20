@@ -166,6 +166,20 @@ impl<D> InnerBackend<D> {
         let mut dispatched = 0;
         let mut events: [libc::port_event; 32] = unsafe { std::mem::zeroed() };
         loop {
+            // Only call port_getn when the port really holds events. On its
+            // way out port_getn wakes anything polling the port descriptor
+            // (whenever a poller is registered, even if it returned nothing),
+            // so an empty port_getn from inside the caller's "port is
+            // readable" handler re-triggers that handler forever. fstat is
+            // free of side effects: st_size is the number of queued events.
+            let mut st: libc::stat = unsafe { std::mem::zeroed() };
+            if unsafe { libc::fstat(poll_fd.as_raw_fd(), &mut st) } < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if st.st_size <= 0 {
+                break;
+            }
+
             // Ask for at least one event without waiting.
             let mut nget: libc::c_uint = 1;
             let mut timeout = libc::timespec { tv_sec: 0, tv_nsec: 0 };
