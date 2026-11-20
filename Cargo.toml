@@ -154,6 +154,7 @@ inherits = "release"
 lto = "fat"
 
 [patch.crates-io]
+calloop = { path = "noctos-vendor/calloop" }
 # NoctOS: illumos-patched copies, pending proper forks. smithay is upstream
 # rev 8a27023 (the rev cosmic-comp pins) plus three illumos gates.
 smithay = { path = "noctos-vendor/smithay" }
