@@ -193,6 +193,10 @@ impl<D> InnerBackend<D> {
             }
 
             for event in &events[..nget as usize] {
+                // The wake-up kick from insert_client carries no client.
+                if event.portev_source as libc::c_int != libc::PORT_SOURCE_FD {
+                    continue;
+                }
                 let id = InnerClientId::from_u64(event.portev_user as usize as u64);
                 // remove the cb while we call it, to gracefully handle reentrancy
                 let rearm = match self.dispatch_events_for(data, id.clone()) {

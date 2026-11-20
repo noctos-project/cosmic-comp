@@ -409,6 +409,15 @@ impl<D> ErasedState for State<D> {
             if r < 0 {
                 Err(std::io::Error::last_os_error())
             } else {
+                // If the client had already sent data, port_associate queued
+                // the event on the spot, and that path (port_associate_fd ->
+                // port_send_event) does not wake anything polling the port
+                // descriptor itself; only a later pollwakeup() would. The
+                // caller's event loop would then never dispatch this client.
+                // A user event does go through the wake-up path.
+                unsafe {
+                    libc::port_send(self.poll_fd.as_raw_fd(), 0, std::ptr::null_mut());
+                }
                 Ok(())
             }
         };
