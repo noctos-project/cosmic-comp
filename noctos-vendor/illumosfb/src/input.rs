@@ -87,20 +87,31 @@ pub enum Event {
 }
 
 fn read_events(file: &mut File, buf: &mut Vec<FirmEvent>) -> io::Result<usize> {
+    // Drain the device completely. A caller that polls once per frame must
+    // never leave events behind: with slow frames the kernel queue would grow
+    // and input would lag further and further behind the hand.
     let mut raw = [0u8; 16 * 64];
-    let n = match file.read(&mut raw) {
-        Ok(n) => n,
-        Err(e) if e.kind() == io::ErrorKind::WouldBlock => 0,
-        Err(e) => return Err(e),
-    };
-    let count = n / std::mem::size_of::<FirmEvent>();
-    for i in 0..count {
-        let ev = unsafe {
-            std::ptr::read_unaligned(raw.as_ptr().add(i * 16) as *const FirmEvent)
+    let mut total = 0;
+    loop {
+        let n = match file.read(&mut raw) {
+            Ok(n) => n,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => 0,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
         };
-        buf.push(ev);
+        let count = n / std::mem::size_of::<FirmEvent>();
+        for i in 0..count {
+            let ev = unsafe {
+                std::ptr::read_unaligned(raw.as_ptr().add(i * 16) as *const FirmEvent)
+            };
+            buf.push(ev);
+        }
+        total += count;
+        if count == 0 {
+            break;
+        }
     }
-    Ok(count)
+    Ok(total)
 }
 
 fn open_input(path: &str) -> io::Result<File> {
