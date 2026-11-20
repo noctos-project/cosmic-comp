@@ -157,4 +157,6 @@ lto = "fat"
 smithay = { path = "noctos-vendor/smithay" }
 wayland-backend = { path = "noctos-vendor/wayland-backend" }
 drm-ffi = { path = "noctos-vendor/drm-ffi" }
+# second, older DRM stack pulled in by softbuffer (via iced_tiny_skia)
+drm-ffi-07 = { package = "drm-ffi", path = "noctos-vendor/drm-ffi-0.7" }
 smithay-egui = { git = "https://github.com/Smithay/smithay-egui.git", rev = "6511552" }
