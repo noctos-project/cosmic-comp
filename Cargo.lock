@@ -1281,8 +1281,6 @@ dependencies = [
 [[package]]
 name = "drm-ffi"
 version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51a91c9b32ac4e8105dec255e849e0d66e27d7c34d184364fb93e469db08f690"
 dependencies = [
  "drm-sys 0.8.1",
  "rustix 1.1.6",
@@ -4766,7 +4764,6 @@ checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
 [[package]]
 name = "smithay"
 version = "0.7.0"
-source = "git+https://github.com/smithay/smithay.git?rev=8a27023#8a270232f1bfc416c781273c98a3f52a812a0bba"
 dependencies = [
  "aliasable",
  "appendlist",
@@ -5770,11 +5767,10 @@ dependencies = [
 [[package]]
 name = "wayland-backend"
 version = "0.3.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38a91b4eaddff87b1cd1074985e3713da4af2c49742d1b356b2c01670a67a078"
 dependencies = [
  "cc",
  "downcast-rs",
+ "libc",
  "rustix 1.1.6",
  "scoped-tls",
  "smallvec",

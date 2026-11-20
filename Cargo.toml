@@ -8,6 +8,7 @@ rust-version = "1.95"
 
 [workspace]
 members = ["cosmic-comp-config", "cosmic-comp-ipc"]
+exclude = ["noctos-vendor"]
 
 [dependencies]
 anyhow = { version = "1.0.102", features = ["backtrace"] }
@@ -151,5 +152,9 @@ inherits = "release"
 lto = "fat"
 
 [patch.crates-io]
-smithay = { git = "https://github.com/smithay/smithay.git", rev = "8a27023" }
+# NoctOS: illumos-patched copies, pending proper forks. smithay is upstream
+# rev 8a27023 (the rev cosmic-comp pins) plus three illumos gates.
+smithay = { path = "noctos-vendor/smithay" }
+wayland-backend = { path = "noctos-vendor/wayland-backend" }
+drm-ffi = { path = "noctos-vendor/drm-ffi" }
 smithay-egui = { git = "https://github.com/Smithay/smithay-egui.git", rev = "6511552" }
