@@ -155,6 +155,7 @@ lto = "fat"
 
 [patch.crates-io]
 calloop = { path = "noctos-vendor/calloop" }
+polling = { path = "noctos-vendor/polling" }
 # NoctOS: illumos-patched copies, pending proper forks. smithay is upstream
 # rev 8a27023 (the rev cosmic-comp pins) plus three illumos gates.
 smithay = { path = "noctos-vendor/smithay" }
