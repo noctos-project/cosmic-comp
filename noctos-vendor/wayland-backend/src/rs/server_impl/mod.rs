@@ -8,6 +8,8 @@ use crate::protocol::{same_interface, Interface, Message};
 mod client;
 mod common_poll;
 mod handle;
+#[cfg(target_os = "illumos")]
+mod illumos_poll;
 mod registry;
 
 pub use crate::types::server::Credentials;
