@@ -205,6 +205,29 @@ impl std::fmt::Debug for Poll {
     }
 }
 
+/// Whether a descriptor is ready for what `interest` asks about, or in an error or hang-up
+/// state, right now. Used to drop stale events of the level-trigger emulation.
+#[cfg(unix)]
+fn still_ready(fd: Raw, interest: &polling::Event) -> bool {
+    use rustix::event::{PollFd, PollFlags, poll};
+
+    let mut flags = PollFlags::empty();
+    if interest.readable {
+        flags |= PollFlags::IN;
+    }
+    if interest.writable {
+        flags |= PollFlags::OUT;
+    }
+    // SAFETY: the descriptor is registered with the poller and therefore open.
+    let fd = unsafe { Borrowed::borrow_raw(fd) };
+    let mut fds = [PollFd::new(&fd, flags)];
+    match poll(&mut fds, Some(&rustix::event::Timespec { tv_sec: 0, tv_nsec: 0 })) {
+        Ok(n) => n > 0 && !fds[0].revents().is_empty(),
+        // If the check itself fails, report the event and let the handler find out.
+        Err(_) => true,
+    }
+}
+
 impl Poll {
     pub(crate) fn new() -> crate::Result<Poll> {
         Self::new_inner(false)
@@ -290,17 +313,37 @@ impl Poll {
         let level_triggered = self.level_triggered.as_ref().map(RefCell::borrow);
         let mut poll_events = events
             .iter()
-            .map(|ev| {
+            .filter(|ev| {
                 // If we need to emulate level-triggered events...
                 if let Some(level_triggered) = level_triggered.as_ref() {
                     // ...and this event is from a level-triggered source...
-                    if level_triggered.contains_key(&ev.key) {
-                        // ...then it has to be re-registered, which is done before the next
-                        // wait (see `pending_rearm`).
+                    if let Some((source, interest)) = level_triggered.get(&ev.key) {
+                        // ...then check that it still holds. A one-shot poller queues the
+                        // event when the descriptor becomes ready and keeps it queued even
+                        // if another thread polling the same descriptor has consumed the
+                        // data since. A level-triggered poller (epoll) evaluates readiness
+                        // when waiting and never reports such an event. Reporting it makes
+                        // callers act on a descriptor that is not ready; for a Wayland
+                        // socket shared by several threads that is a deadlock, as
+                        // wl_display_read_events() then waits for the other readers, who
+                        // are asleep because there is nothing to read.
+                        #[cfg(unix)]
+                        if !still_ready(*source, interest) {
+                            // Arm it again right away; it stays out of this batch.
+                            // SAFETY: The source is valid.
+                            let _ = self
+                                .poller
+                                .modify(unsafe { Borrowed::borrow_raw(*source) }, *interest);
+                            return false;
+                        }
+                        // It has to be re-registered, which is done once its handler has
+                        // run (see `pending_rearm`).
                         self.pending_rearm.borrow_mut().push(ev.key);
                     }
                 }
-
+                true
+            })
+            .map(|ev| {
                 Ok(PollEvent {
                     readiness: Readiness {
                         readable: ev.readable,
