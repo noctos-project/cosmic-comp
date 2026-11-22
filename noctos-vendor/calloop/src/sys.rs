@@ -189,6 +189,15 @@ pub struct Poll {
     /// system call every time. It's better to use the intergrated system, if available.
     level_triggered: Option<RefCell<HashMap<usize, (Raw, polling::Event)>>>,
 
+    /// Keys of emulated level-triggered sources that fired in the previous `poll()` and still
+    /// have to be re-armed.
+    ///
+    /// Re-arming is deferred until just before the next wait, i.e. until after the handlers
+    /// have run. Re-arming as soon as the event is seen (as upstream does) happens while the
+    /// descriptor is still readable, so the poller immediately queues a second event for data
+    /// the handler is about to consume, and every real wake-up is followed by a spurious one.
+    pending_rearm: RefCell<Vec<usize>>,
+
     pub(crate) timers: Rc<RefCell<TimerWheel>>,
 }
 
@@ -217,6 +226,7 @@ impl Poll {
             events: RefCell::new(Events::new()),
             timers: Rc::new(RefCell::new(TimerWheel::new())),
             level_triggered,
+            pending_rearm: RefCell::new(Vec::new()),
         })
     }
 
@@ -232,6 +242,29 @@ impl Poll {
             _ => timeout.or(next_timeout),
         };
 
+        // Re-arm the emulated level-triggered sources that fired last time, now that their
+        // handlers have run. A source that was unregistered in the meantime is no longer in the
+        // map; one whose descriptor was closed without unregistering is skipped.
+        if let Some(level_triggered) = self.level_triggered.as_ref() {
+            let level_triggered = level_triggered.borrow();
+            for key in self.pending_rearm.borrow_mut().drain(..) {
+                if let Some((source, interest)) = level_triggered.get(&key) {
+                    // SAFETY: The source is valid.
+                    match self
+                        .poller
+                        .modify(unsafe { Borrowed::borrow_raw(*source) }, *interest)
+                    {
+                        Ok(()) => {}
+                        Err(err)
+                            if err.kind() == std::io::ErrorKind::NotFound
+                                || err.raw_os_error()
+                                    == Some(rustix::io::Errno::BADF.raw_os_error()) => {}
+                        Err(err) => return Err(err.into()),
+                    }
+                }
+            }
+        }
+
         let mut events = self.events.borrow_mut();
         events.clear();
         self.poller.wait(&mut events, timeout)?;
@@ -244,11 +277,10 @@ impl Poll {
                 // If we need to emulate level-triggered events...
                 if let Some(level_triggered) = level_triggered.as_ref() {
                     // ...and this event is from a level-triggered source...
-                    if let Some((source, interest)) = level_triggered.get(&ev.key) {
-                        // ...then we need to re-register the source.
-                        // SAFETY: The source is valid.
-                        self.poller
-                            .modify(unsafe { Borrowed::borrow_raw(*source) }, *interest)?;
+                    if level_triggered.contains_key(&ev.key) {
+                        // ...then it has to be re-registered, which is done before the next
+                        // wait (see `pending_rearm`).
+                        self.pending_rearm.borrow_mut().push(ev.key);
                     }
                 }
 
