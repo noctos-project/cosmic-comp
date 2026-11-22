@@ -196,6 +196,8 @@ pub use crate::inotify::INotifyWatcher;
     all(target_os = "macos", feature = "macos_kqueue")
 ))]
 pub use crate::kqueue::KqueueWatcher;
+#[cfg(any(target_os = "illumos", target_os = "solaris"))]
+pub use crate::event_port::EventPortWatcher;
 pub use null::NullWatcher;
 pub use poll::PollWatcher;
 #[cfg(target_os = "windows")]
@@ -217,6 +219,8 @@ pub mod kqueue;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+#[cfg(any(target_os = "illumos", target_os = "solaris"))]
+pub mod event_port;
 pub mod null;
 pub mod poll;
 
@@ -292,6 +296,8 @@ pub enum WatcherKind {
     PollWatcher,
     /// Windows backend
     ReadDirectoryChangesWatcher,
+    /// Event port backend (illumos, Solaris)
+    EventPort,
     /// Fake watcher for testing
     NullWatcher,
 }
@@ -423,6 +429,9 @@ pub type RecommendedWatcher = ReadDirectoryChangesWatcher;
 ))]
 pub type RecommendedWatcher = KqueueWatcher;
 /// The recommended [`Watcher`] implementation for the current platform
+#[cfg(any(target_os = "illumos", target_os = "solaris"))]
+pub type RecommendedWatcher = EventPortWatcher;
+/// The recommended [`Watcher`] implementation for the current platform
 #[cfg(not(any(
     target_os = "linux",
     target_os = "android",
@@ -432,7 +441,9 @@ pub type RecommendedWatcher = KqueueWatcher;
     target_os = "openbsd",
     target_os = "netbsd",
     target_os = "dragonfly",
-    target_os = "ios"
+    target_os = "ios",
+    target_os = "illumos",
+    target_os = "solaris"
 )))]
 pub type RecommendedWatcher = PollWatcher;
 
