@@ -606,6 +606,10 @@ impl<'l, Data> EventLoop<'l, Data> {
             }
         }
 
+        // The handlers have drained their sources: re-arm the emulated level-triggered ones
+        // now, before the next `before_sleep` (see `Poll::rearm_fired`).
+        self.handle.inner.poll.borrow().rearm_fired()?;
+
         Ok(())
     }
 

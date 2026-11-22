@@ -192,10 +192,7 @@ pub struct Poll {
     /// Keys of emulated level-triggered sources that fired in the previous `poll()` and still
     /// have to be re-armed.
     ///
-    /// Re-arming is deferred until just before the next wait, i.e. until after the handlers
-    /// have run. Re-arming as soon as the event is seen (as upstream does) happens while the
-    /// descriptor is still readable, so the poller immediately queues a second event for data
-    /// the handler is about to consume, and every real wake-up is followed by a spurious one.
+    /// See [`Poll::rearm_fired`] for when and why they are re-armed.
     pending_rearm: RefCell<Vec<usize>>,
 
     pub(crate) timers: Rc<RefCell<TimerWheel>>,
@@ -230,21 +227,23 @@ impl Poll {
         })
     }
 
-    pub(crate) fn poll(&self, mut timeout: Option<Duration>) -> crate::Result<Vec<PollEvent>> {
-        // Adjust the timeout for the timers.
-        let next_timeout = self
-            .timers
-            .borrow()
-            .next_deadline()
-            .map(|deadline| deadline.saturating_duration_since(Instant::now()));
-        timeout = match (timeout, next_timeout) {
-            (Some(timeout), Some(next_timeout)) => Some(timeout.min(next_timeout)),
-            _ => timeout.or(next_timeout),
-        };
-
-        // Re-arm the emulated level-triggered sources that fired last time, now that their
-        // handlers have run. A source that was unregistered in the meantime is no longer in the
-        // map; one whose descriptor was closed without unregistering is skipped.
+    /// Re-arm the emulated level-triggered sources that fired in the last `poll()`.
+    ///
+    /// Called by the event loop once the handlers for that batch of events have run, and
+    /// before the next round of `before_sleep` hooks. Both halves of that timing matter on
+    /// one-shot pollers such as event ports:
+    ///
+    /// - *After the handlers*: re-arming a descriptor that is still readable queues a new
+    ///   event at once, so doing it before the handler has read anything (as upstream does,
+    ///   inside `poll()`) follows every real wake-up with an empty one.
+    /// - *Before `before_sleep`*: while a source is not armed, data that arrives and is
+    ///   consumed by another thread polling the same descriptor (a Wayland socket shared by
+    ///   several event queues) leaves no trace here. Sources like `WaylandSource` check for
+    ///   such hand-offs in `before_sleep`, so the source must be armed again by then.
+    ///
+    /// A source that was unregistered in the meantime is no longer in the map; one whose
+    /// descriptor was closed without unregistering is skipped.
+    pub(crate) fn rearm_fired(&self) -> crate::Result<()> {
         if let Some(level_triggered) = self.level_triggered.as_ref() {
             let level_triggered = level_triggered.borrow();
             for key in self.pending_rearm.borrow_mut().drain(..) {
@@ -264,6 +263,24 @@ impl Poll {
                 }
             }
         }
+        Ok(())
+    }
+
+    pub(crate) fn poll(&self, mut timeout: Option<Duration>) -> crate::Result<Vec<PollEvent>> {
+        // Adjust the timeout for the timers.
+        let next_timeout = self
+            .timers
+            .borrow()
+            .next_deadline()
+            .map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        timeout = match (timeout, next_timeout) {
+            (Some(timeout), Some(next_timeout)) => Some(timeout.min(next_timeout)),
+            _ => timeout.or(next_timeout),
+        };
+
+        // Normally a no-op: `rearm_fired` has already run at the end of the previous dispatch.
+        // This covers a dispatch that returned early with an error.
+        self.rearm_fired()?;
 
         let mut events = self.events.borrow_mut();
         events.clear();
