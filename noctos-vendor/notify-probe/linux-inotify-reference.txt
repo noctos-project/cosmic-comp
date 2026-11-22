@@ -1,0 +1,75 @@
+watcher kind: Inotify
+root: <scratch>
+ 0 nothing (expect no events)
+      Access(Open(Any)) ["sub"]
+ 1 create file 'new'
+      Create(File) ["new"]
+      Access(Open(Any)) ["new"]
+      Modify(Data(Any)) ["new"]
+      Access(Close(Write)) ["new"]
+ 2 rewrite 'existing' in place
+      Access(Open(Any)) ["existing"]
+      Modify(Data(Any)) ["existing"]
+      Access(Close(Write)) ["existing"]
+ 3 rewrite 'existing' again
+      Access(Open(Any)) ["existing"]
+      Modify(Data(Any)) ["existing"]
+      Access(Close(Write)) ["existing"]
+ 4 atomic replace of 'existing' (write .tmp, rename over)
+      Create(File) [".tmp"]
+      Access(Open(Any)) [".tmp"]
+      Modify(Data(Any)) [".tmp"]
+      Access(Close(Write)) [".tmp"]
+      Modify(Name(From)) [".tmp"]
+      Modify(Name(To)) ["existing"]
+      Modify(Name(Both)) [".tmp", "existing"]
+ 5 atomic replace of 'existing' again
+      Create(File) [".tmp"]
+      Access(Open(Any)) [".tmp"]
+      Modify(Data(Any)) [".tmp"]
+      Access(Close(Write)) [".tmp"]
+      Modify(Name(From)) [".tmp"]
+      Modify(Name(To)) ["existing"]
+      Modify(Name(Both)) [".tmp", "existing"]
+ 6 rewrite 'existing' in place after the replaces
+      Access(Open(Any)) ["existing"]
+      Modify(Data(Any)) ["existing"]
+      Modify(Data(Any)) ["existing"]
+      Access(Close(Write)) ["existing"]
+ 7 rewrite 'sub/nested'
+      Access(Open(Any)) ["sub/nested"]
+      Modify(Data(Any)) ["sub/nested"]
+      Access(Close(Write)) ["sub/nested"]
+ 8 chmod 'new'
+      Modify(Metadata(Any)) ["new"]
+ 9 rename 'new' -> 'renamed'
+      Modify(Name(From)) ["new"]
+      Modify(Name(To)) ["renamed"]
+      Modify(Name(Both)) ["new", "renamed"]
+10 delete 'renamed'
+      Remove(File) ["renamed"]
+11 delete and recreate 'existing' at once
+      Remove(File) ["existing"]
+      Create(File) ["existing"]
+      Access(Open(Any)) ["existing"]
+      Modify(Data(Any)) ["existing"]
+      Access(Close(Write)) ["existing"]
+12 rewrite 'existing' after the recreate
+      Access(Open(Any)) ["existing"]
+      Modify(Data(Any)) ["existing"]
+      Access(Close(Write)) ["existing"]
+13 mkdir 'dir2' and create 'dir2/inner' at once
+      Create(Folder) ["dir2"]
+      Access(Open(Any)) ["dir2"]
+14 rewrite 'dir2/inner'
+      Access(Open(Any)) ["dir2/inner"]
+      Modify(Data(Any)) ["dir2/inner"]
+      Access(Close(Write)) ["dir2/inner"]
+15 remove 'sub' recursively
+      Access(Open(Any)) ["sub"]
+      Access(Open(Any)) ["sub"]
+      Remove(File) ["sub/nested"]
+      Remove(Folder) ["sub"]
+16 after unwatch: rewrite 'existing' (expect no events)
+      (no events)
+done

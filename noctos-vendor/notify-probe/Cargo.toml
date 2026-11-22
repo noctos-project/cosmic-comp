@@ -1,0 +1,16 @@
+# NoctOS: a throw-away probe for the vendored notify crate. It runs a fixed
+# series of file operations in a scratch directory and prints the events the
+# recommended watcher reports for each. Not part of any build.
+#
+#   cd noctos-vendor/notify-probe && cargo run --release
+[package]
+name = "notify-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+notify = { path = "../notify" }
+
+# Standalone: keep it out of the cosmic-comp workspace.
+[workspace]
