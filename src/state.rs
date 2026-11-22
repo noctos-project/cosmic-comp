@@ -1168,7 +1168,15 @@ impl Common {
 
         // layer surfaces
         for o in shell.outputs() {
-            let namespace = shell.workspaces.active_num(o).1;
+            // Has to be the namespace the renderer gives layer-surface elements
+            // (see `render_input_order_internal`), or they are never found in the
+            // render states and lose their primary scanout output.
+            let workspace_idx = shell.workspaces.active_num(o).1;
+            let namespace = o
+                .user_data()
+                .get::<crate::shell::OutputId>()
+                .map(|id| id.namespace_for_workspace(workspace_idx))
+                .unwrap_or(workspace_idx);
             let map = smithay::desktop::layer_map_for_output(o);
             for layer_surface in map.layers() {
                 layer_surface.with_surfaces(processor(Some(namespace)));

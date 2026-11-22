@@ -5340,7 +5340,13 @@ impl Shell {
 
         let map = smithay::desktop::layer_map_for_output(output);
         for layer_surface in map.layers() {
-            let namespace = self.workspaces.active_num(output).1;
+            // Same namespace as the renderer uses for layer-surface elements.
+            let workspace_idx = self.workspaces.active_num(output).1;
+            let namespace = output
+                .user_data()
+                .get::<OutputId>()
+                .map(|id| id.namespace_for_workspace(workspace_idx))
+                .unwrap_or(workspace_idx);
             layer_surface.take_presentation_feedback(
                 &mut output_presentation_feedback,
                 surface_primary_scanout_output,
