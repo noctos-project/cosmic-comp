@@ -307,6 +307,33 @@ fn socket_credentials(fd: BorrowedFd<'_>) -> io::Result<(ConnectionCredentials, 
         // FIXME: Handle pid fetching too
     }
 
+    // illumos and Solaris: the peer's credentials come from getpeerucred(3C).
+    // Without them a p2p server knows no user id for the peer and rejects
+    // every EXTERNAL authentication.
+    #[cfg(any(target_os = "illumos", target_os = "solaris"))]
+    {
+        use std::os::fd::AsRawFd;
+
+        let mut ucred: *mut libc::ucred_t = std::ptr::null_mut();
+        // SAFETY: `fd` is a valid socket; on success `ucred` is set to a
+        // credential the caller owns and must free.
+        if unsafe { libc::getpeerucred(fd.as_raw_fd(), &mut ucred) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `ucred` is the valid credential obtained above.
+        let (uid, pid) = unsafe { (libc::ucred_geteuid(ucred), libc::ucred_getpid(ucred)) };
+        // SAFETY: obtained from getpeerucred and not used after this.
+        unsafe { libc::ucred_free(ucred) };
+
+        // Both report -1 when the credential does not carry the value.
+        if uid != libc::uid_t::MAX {
+            creds = creds.set_unix_user_id(uid);
+        }
+        if pid > 0 {
+            creds = creds.set_process_id(pid as u32);
+        }
+    }
+
     Ok((
         creds,
         GroupLookup {
