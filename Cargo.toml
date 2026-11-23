@@ -154,6 +154,9 @@ inherits = "release"
 lto = "fat"
 
 [patch.crates-io]
+# NoctOS: notify with a native illumos backend (event ports), so that
+# config-file changes are noticed as they are on Linux.
+notify = { path = "noctos-vendor/notify" }
 calloop = { path = "noctos-vendor/calloop" }
 polling = { path = "noctos-vendor/polling" }
 # NoctOS: illumos-patched copies, pending proper forks. smithay is upstream
