@@ -46,21 +46,6 @@ const LOC_X_ABSOLUTE: u16 = 32642;
 const LOC_Y_ABSOLUTE: u16 = 32643;
 const WHEEL_ID_ADDR: u16 = 0x7800;
 
-// vuid_wheel.h (illumos-gate usr/src/uts/common/sys/vuid_wheel.h):
-//   VUIDGWHEELCOUNT = VUIOC|15, VUIDSWHEELSTATE = VUIOC|18, with VUIOC = 'v'<<8.
-const VUIDGWHEELCOUNT: i32 = 0x760f;
-const VUIDSWHEELSTATE: i32 = 0x7612;
-const VUID_WHEEL_STATE_VERS: libc::c_int = 1;
-const VUID_WHEEL_STATE_ENABLED: u32 = 1 << 0;
-
-/// vuid_wheel.h wheel_state.
-#[repr(C)]
-struct WheelState {
-    vers: libc::c_int,
-    id: libc::c_int,
-    stateflags: u32,
-}
-
 // msio.h
 const MSIOSRESOLUTION: i32 = 0x6d04;
 
@@ -256,21 +241,6 @@ impl Pointer {
             width: screen_w as libc::c_int,
         };
         unsafe { libc::ioctl(fd, MSIOSRESOLUTION as _, &res) };
-
-        // Wheels report nothing until they are switched on, one by one. A
-        // device without wheels, or one that does not know these ioctls,
-        // answers with an error; there is then nothing to switch on.
-        let mut wheels: libc::c_int = 0;
-        if unsafe { libc::ioctl(fd, VUIDGWHEELCOUNT as _, &mut wheels) } == 0 {
-            for id in 0..wheels.clamp(0, 256) {
-                let state = WheelState {
-                    vers: VUID_WHEEL_STATE_VERS,
-                    id,
-                    stateflags: VUID_WHEEL_STATE_ENABLED,
-                };
-                unsafe { libc::ioctl(fd, VUIDSWHEELSTATE as _, &state) };
-            }
-        }
 
         Ok(Self {
             file,
